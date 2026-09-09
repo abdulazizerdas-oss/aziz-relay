@@ -1,6 +1,5 @@
-import os
+```python
 import json
-import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 app = FastAPI()
@@ -27,20 +26,46 @@ async def send_json(ws, data):
     )
 
 
+async def broadcast_to_pcs(message):
+    for pc in list(pc_connections):
+        try:
+            await pc.send_text(message)
+        except Exception:
+            pc_connections.discard(pc)
+
+
+async def broadcast_to_phones(message):
+    for phone in list(phone_connections):
+        try:
+            await phone.send_text(message)
+        except Exception:
+            phone_connections.discard(phone)
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
 
     await websocket.accept()
 
     role = None
+    device_id = None
 
     try:
+
+        # =====================================================
+        # İLK MESAJ
+        # =====================================================
 
         first_message = await websocket.receive_text()
 
         data = json.loads(first_message)
 
         role = data.get("role")
+        device_id = data.get("device_id")
+
+        # =====================================================
+        # PC BAĞLANTISI
+        # =====================================================
 
         if role == "pc":
 
@@ -54,7 +79,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 }
             )
 
-            print("AZIZ AI PC bağlandı.")
+            print(
+                "[RELAY] AZIZ AI PC bağlandı."
+            )
+
+        # =====================================================
+        # TELEFON BAĞLANTISI
+        # =====================================================
 
         elif role == "phone":
 
@@ -69,9 +100,29 @@ async def websocket_endpoint(websocket: WebSocket):
             )
 
             print(
-                "NEXORA telefon bağlandı:",
-                data.get("device_id")
+                "[RELAY] NEXORA telefon bağlandı:",
+                device_id
             )
+
+            # -------------------------------------------------
+            # ÖNEMLİ:
+            # Telefonun ilk register mesajını PC'ye aktar.
+            # -------------------------------------------------
+
+            if data.get("type") == "register":
+
+                print(
+                    "[RELAY] Telefon REGISTER gönderdi:",
+                    device_id
+                )
+
+                await broadcast_to_pcs(
+                    first_message
+                )
+
+        # =====================================================
+        # GEÇERSİZ CİHAZ
+        # =====================================================
 
         else:
 
@@ -84,7 +135,12 @@ async def websocket_endpoint(websocket: WebSocket):
             )
 
             await websocket.close()
+
             return
+
+        # =====================================================
+        # ANA MESAJ DÖNGÜSÜ
+        # =====================================================
 
         while True:
 
@@ -92,25 +148,41 @@ async def websocket_endpoint(websocket: WebSocket):
 
             data = json.loads(message)
 
-            # Telefondan PC'ye
+            # =================================================
+            # TELEFONDAN PC'YE
+            # =================================================
+
             if role == "phone":
 
-                for pc in list(pc_connections):
+                print(
+                    "[RELAY] TELEFON -> PC:",
+                    data.get("type"),
+                    device_id
+                )
 
-                    try:
-                        await pc.send_text(message)
+                await broadcast_to_pcs(
+                    message
+                )
 
-                    except Exception:
-                        pc_connections.discard(pc)
+            # =================================================
+            # PC'DEN TELEFONA
+            # =================================================
 
-            # PC'den telefonlara
             elif role == "pc":
 
                 target_device = data.get(
                     "target_device_id"
                 )
 
-                for phone in list(phone_connections):
+                print(
+                    "[RELAY] PC -> TELEFON:",
+                    data.get("type"),
+                    target_device
+                )
+
+                for phone in list(
+                    phone_connections
+                ):
 
                     try:
 
@@ -145,8 +217,8 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as error:
 
         print(
-            "Relay hatası:",
-            error
+            "[RELAY] Hata:",
+            repr(error)
         )
 
     finally:
@@ -158,7 +230,7 @@ async def websocket_endpoint(websocket: WebSocket):
             )
 
             print(
-                "AZIZ AI PC bağlantısı kesildi."
+                "[RELAY] AZIZ AI PC bağlantısı kesildi."
             )
 
         elif role == "phone":
@@ -168,5 +240,7 @@ async def websocket_endpoint(websocket: WebSocket):
             )
 
             print(
-                "NEXORA telefon bağlantısı kesildi."
+                "[RELAY] NEXORA telefon bağlantısı kesildi:",
+                device_id
             )
+```
