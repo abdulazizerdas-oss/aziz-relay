@@ -1,4 +1,4 @@
-```python
+
 import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
@@ -243,4 +243,3 @@ async def websocket_endpoint(websocket: WebSocket):
                 "[RELAY] NEXORA telefon bağlantısı kesildi:",
                 device_id
             )
-```
